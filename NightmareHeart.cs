@@ -256,6 +256,7 @@ namespace Celeste.Mod.OdysseyHelper
                     poem.Alpha = Ease.CubeIn(1f - t3);
                     yield return null;
                 }
+                Audio.SetMusicParam("fade", 1);
 
                 player.Depth = 0;
                 Leader.StoreStrawberries(player.Leader);

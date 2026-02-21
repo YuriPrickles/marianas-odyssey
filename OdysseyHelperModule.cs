@@ -81,7 +81,11 @@ public class OdysseyHelperModule : EverestModule {
     private void Postcard_BeforeRender(On.Celeste.Postcard.orig_BeforeRender orig, Postcard self)
     {
         string text = Dialog.Clean("FILE_DEFAULT");
-        if (SaveData.Instance.LastArea_Safe.SID.Contains("Prickles/OdysseyOfSand"))
+        if (SaveData.Instance != null && Dialog.Language.CanDisplay(SaveData.Instance.Name))
+        {
+            text = SaveData.Instance.Name;
+        }
+        if (SaveData.Instance.LevelSet.Contains("OdysseyOfSand"))
         {
             text = Dialog.Clean("MARIANA");
         }
@@ -99,10 +103,6 @@ public class OdysseyHelperModule : EverestModule {
         Engine.Graphics.GraphicsDevice.SetRenderTarget(self.target);
         Engine.Graphics.GraphicsDevice.Clear(Color.Transparent);
         Draw.SpriteBatch.Begin();
-        if (SaveData.Instance != null && Dialog.Language.CanDisplay(SaveData.Instance.Name))
-        {
-            text = SaveData.Instance.Name;
-        }
 
         self.postcard.Draw(Vector2.Zero);
         ActiveFont.Draw(text, new Vector2(115f, 30f), Vector2.Zero, Vector2.One * 0.9f, Color.Black * 0.7f);

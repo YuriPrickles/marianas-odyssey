@@ -144,7 +144,6 @@ public class SandstormHeartBoss : HeartGem
 				(base.Scene as Level).Displacement.AddBurst(Position, 0.35f, 8f, 48f, 0.25f);
 			}
 		};
-        spriteKept = sprite;
     }
 	public bool initialUpdate = false;
     public float sineXMult = 9f;
@@ -181,17 +180,17 @@ public class SandstormHeartBoss : HeartGem
             }
 			initialUpdate = true;
         }
-		ModifiedOrigUpdate();
+		base.Update();
 		Player player = Scene.Tracker.GetEntity<Player>();
 		if (player == null || player.Dead || !player.Active) return;
-		if (fightDone)
-		{
-			patternCoroutine.Cancel();
-			return;
-		}
 		if (patternCoroutine != null && !patternCoroutine.Active)
-		{
-			patternCoroutine.Replace(Pattern(player));
+        {
+            if (fightDone)
+            {
+                patternCoroutine.Cancel();
+                return;
+            }
+            patternCoroutine.Replace(Pattern(player));
 		}
 		switch (currentPhase)
 		{
@@ -247,7 +246,17 @@ public class SandstormHeartBoss : HeartGem
 	{
 		Player player = Scene.Tracker.GetEntity<Player>();
 		if (player == null || player.Dead || !player.Active) return;
-		Collidable = player.StateMachine.State != Player.StTempleFall && value;
+		Collidable = !fightDone && player.StateMachine.State != Player.StTempleFall && value;
+	}
+
+	public IEnumerator KeepSettingCollidableUntilTrue()
+	{
+		while (!Collidable)
+		{
+			SetCollidable(true);
+			yield return null;
+		}
+		yield break;
 	}
 	public int attackCounter = 0;
 	public Attacks attackType = Attacks.Idle;
@@ -265,7 +274,7 @@ public class SandstormHeartBoss : HeartGem
 	public float introTextAlpha = 0f;
     public IEnumerator Pattern(Player player)
 	{
-		if (player == null || player.Dead || !player.Active) yield break;
+		if (player == null || player.Dead || !player.Active || fightDone) yield break;
 		if (arriving)
         {
             player.StateMachine.State = Player.StDummy;
@@ -502,7 +511,7 @@ public class SandstormHeartBoss : HeartGem
 	}
 	public new void OnPlayer(Player player)
 	{
-		if (collected || (base.Scene as Level).Frozen || player.StateMachine.State == Player.StTempleFall)
+		if (fightDone || collected || (base.Scene as Level).Frozen || player.StateMachine.State == Player.StTempleFall)
 		{
 			return;
 		}
@@ -547,7 +556,7 @@ public class SandstormHeartBoss : HeartGem
 		{
 			CrystalDebris.Burst(Position, sprite.Color, false, Math.Min(1,(int)currentPhase) * 2);
 			Audio.Play("event:/game/07_summit/gem_get", Position).setPitch(1 + ((beatdownHitCount - 10) * -0.15f));
-			SetCollidable(false);
+            SetCollidable(false);
 			int orbCount = Math.Min(1, (int)currentPhase) * 2 + random.Next(3);
 			for (int i = 0; i < orbCount; i++)
 			{
@@ -556,50 +565,16 @@ public class SandstormHeartBoss : HeartGem
 		}
 		moveWiggler.Start();
 		ScaleWiggler.Start();
-		moveWiggleDir = (base.Center - player.Center).SafeNormalize(Vector2.UnitY);
+		moveWiggleDir = (Center - player.Center).SafeNormalize(Vector2.UnitY);
 		Input.Rumble(RumbleStrength.Medium, RumbleLength.Medium);
 	}
-	public Sprite spriteKept;
 	public IEnumerator HeartFlash()
 	{
 
 		bloom.Radius = 64;
-		yield return Engine.DeltaTime;
+		yield return Engine.DeltaTime * 2;
         bloom.Radius = 16;
         flashCor.Cancel();
-	}
-
-	public void ModifiedOrigUpdate()
-	{
-		bounceSfxDelay -= Engine.DeltaTime;
-		timer += Engine.DeltaTime;
-		sprite.Position = Vector2.UnitY * (float)Math.Sin(timer * 2f) * 2f + moveWiggleDir * moveWiggler.Value * -8f;
-		if (white != null)
-		{
-			white.Position = sprite.Position;
-			white.Scale = sprite.Scale;
-			if (white.CurrentAnimationID != sprite.CurrentAnimationID)
-			{
-				white.Play(sprite.CurrentAnimationID);
-			}
-
-			white.SetAnimationFrame(sprite.CurrentAnimationFrame);
-		}
-
-		if (collected)
-		{
-			Player entity = base.Scene.Tracker.GetEntity<Player>();
-			if (entity == null || entity.Dead)
-			{
-				EndCutscene();
-			}
-		}
-
-		base.Update();
-		if (!collected && base.Scene.OnInterval(0.1f) && Visible)
-		{
-			SceneAs<Level>().Particles.Emit(shineParticle, 1, base.Center, Vector2.One * 8f);
-		}
 	}
 	public IEnumerator MovePlayerTo(Player player, Vector2 target, Ease.Easer easing, float duration)
 	{
@@ -615,9 +590,9 @@ public class SandstormHeartBoss : HeartGem
 	public IEnumerator ColorgradeGlitch()
 	{
 		Level level = SceneAs<Level>();
-		level.NextColorGrade("Prickles/OdysseyOfSand/timeriftintro");
+		level.NextColorGrade("Prickles/OdysseyOfSand/timeriftintro",1);
 		yield return 2f;
-        level.NextColorGrade("panicattack");
+        level.NextColorGrade("panicattack",1);
     }
 	
 }
@@ -662,11 +637,14 @@ public class BeatdownCutscene : CutsceneEntity
                 return;
             }
         }
-		if (boss.currentPhase == SandstormHeartBoss.Phase.Cracked)
+		tooLongCoroutine.Cancel();
+        boss.Add(new Coroutine(boss.KeepSettingCollidableUntilTrue()));
+        if (boss.currentPhase == SandstormHeartBoss.Phase.Cracked)
         {
-            boss.Add(new Coroutine(boss.ColorgradeGlitch()));
-            Audio.SetMusicParam("b_side", 1);
+			boss.Add(new Coroutine(boss.ColorgradeGlitch()));
+			Audio.SetMusicParam("b_side", 1);
 		}
+		Level.PauseLock = false;
 		boss.beatdownCutscene = false;
 		boss.wiggle = true;
 		boss.attackCounter = 0;
@@ -686,8 +664,9 @@ public class BeatdownCutscene : CutsceneEntity
 		EndCutscene(Level);
 	}
 	public IEnumerator CutsceneBeatUp(Player player, bool final = false)
-	{
-		boss.SetCollidable(false);
+    {
+        Level.PauseLock = true;
+        boss.SetCollidable(false);
 		boss.wiggle = false;
 		Level.Flash(Color.White);
 		Level.FormationBackdrop.Display = true;
@@ -698,7 +677,7 @@ public class BeatdownCutscene : CutsceneEntity
 		boss.beatdownCutscene = true;
 		player.StateMachine.Locked = true;
 		boss.SetWind(WindController.Patterns.None);
-		boss.Add(new Coroutine(boss.SceneAs<Level>().ZoomTo(boss.SceneAs<Level>().WorldToScreen(boss.anchor) / 4, 1.2f, 2f)));
+		//boss.Add(new Coroutine(boss.SceneAs<Level>().ZoomTo(boss.SceneAs<Level>().WorldToScreen(boss.anchor) / 4, 1.2f, 2f)));
 		player.StateMachine.State = Player.StDummy;
 		player.DummyFriction = false;
 		player.DummyGravity = false;
@@ -732,14 +711,12 @@ public class BeatdownCutscene : CutsceneEntity
 			if (boss.beatdownHitCount <= 0)
 			{
 				boss.timeWarper.Multiplier = 1;
-				boss.Add(new Coroutine(boss.SceneAs<Level>().ZoomBack(0.5f)));
+				//boss.Add(new Coroutine(boss.SceneAs<Level>().ZoomBack(0.5f)));
 				player.OverrideDashDirection = null;
 				player.StateMachine.Locked = false;
 				player.StateMachine.State = Player.StTempleFall;
 				player.DummyFriction = true;
 				player.DummyGravity = true;
-				while (player.Bottom > boss.ground.Top)
-					yield return null;
 				EndCutscene(Level, true);
                 if (finale)
                 {
